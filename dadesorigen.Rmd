@@ -1,0 +1,580 @@
+---
+title: "Dades classe d'origen"
+output:
+  word_document: default
+  html_notebook: default
+  pdf_document: default
+---
+
+```{r, include=FALSE}
+library(dplyr)
+library(haven)
+library(knitr)
+library(tidyverse)
+library(ggrepel)
+library(logmult)
+library(MASS)
+library(xtable)
+library(flextable)
+library(officer)
+library(dplyr)
+library(ggplot2)
+library(labelled)
+library(questionr)
+```
+
+
+
+```{r}
+round1 <- read.csv("~/uni/5è/tfg estadistica/DADES ESTADISTICA/round1.csv")
+round2 <- read.csv("~/uni/5è/tfg estadistica/DADES ESTADISTICA/round2.csv")
+round3 <- read.csv("~/uni/5è/tfg estadistica/DADES ESTADISTICA/round3.csv")
+round4 <- read.csv("~/uni/5è/tfg estadistica/DADES ESTADISTICA/round4.csv")
+round5 <- read.csv("~/uni/5è/tfg estadistica/DADES ESTADISTICA/round5.csv")
+paremare<- haven::read_sav("ESS12345_fmisko_notext.sav")
+
+```
+
+```{r}
+var1<- c("essround", "idno", "cntry", "gndr", "yrbrn","emprf14", "emplnof", "occf14", "emprm14", "emplnom", "occm14")
+var2<- c("essround", "idno", "cntry", "gndr", "yrbrn","emprf14", "emplnof", "occf14a", "emprm14", "emplnom", "occm14a")
+var3<- c("essround", "idno", "cntry", "gndr", "yrbrn","emprf14", "emplnof", "occf14a", "emprm14", "emplnom", "occm14a")
+var4<- c("essround", "idno", "cntry", "gndr", "yrbrn","emprf14", "emplnof", "occf14b", "emprm14", "emplnom", "occm14b")
+var5<- c("essround", "idno", "cntry", "gndr", "yrbrn","emprf14", "emplnof", "occf14b", "emprm14", "emplnom", "occm14b")
+r1 <- round1[var1]
+r2 <- round2[var2]
+r2$occf14 <- r2$occf14a
+r2$occf14a <- NULL
+r2$occm14 <- r2$occm14a
+r2$occm14a <- NULL
+
+r3 <- round3[var3]
+r3$occf14 <- r3$occf14a
+r3$occf14a <- NULL
+r3$occm14 <- r3$occm14a
+r3$occm14a <- NULL
+
+r4 <- round4[var4]
+r4$occf14 <- r4$occf14b
+r4$occf14b <- NULL
+r4$occm14 <- r4$occm14b
+r4$occm14b <- NULL
+
+r5 <- round5[var5]
+r5$occf14 <- r5$occf14b
+r5$occf14b <- NULL
+r5$occm14 <- r5$occm14b
+r5$occm14b <- NULL
+
+d<- rbind(r1,r2,r3,r4,r5)
+var6<-  c("ESSROUND", "idno", "cntry", "fisko", "misko")
+iskopm <- paremare[var6]
+iskopm <- iskopm %>% rename("essround" = "ESSROUND")
+
+d<- inner_join(d, iskopm, by=c("essround", "idno", "cntry"))
+
+```
+
+```{r}
+write.csv(d, "daadesncpm.csv", row.names = FALSE)
+```
+
+
+# CLASE SOCIAL PARE
+
+```{r}
+
+d$fathersjob <- d$fisko
+d$fathersjob[is.na(d$fathersjob)] <- -9
+var_label(d$fathersjob) <- "Father's occupation - isco88 4-digit"
+
+head(freq(d$fathersjob, total = T))
+
+
+#FATHER'S STATUS
+
+freq(d$emprf14, total = T)
+freq(d$emplnof, total = T)
+
+d$fathersstatus <- d$emprf14
+d$fathersstatus[is.na(d$fathersstatus)] <- 9
+d$fathersstatus[d$cntry == "FR" & (d$essround == 1 | d$essround == 2)] <- -9 # Replace this command line with [SYNTAX A] or [SYNTAX C]
+d$fathersstatus[d$cntry == "HU" & d$essround == 2] <- -9 # Replace this command line with [SYNTAX E]
+val_label(d$fathersstatus, 9) <- "Missing"
+freq(d$fathersstatus, total = T)
+
+
+d$fathersemployees <- d$emplnof
+d$fathersemployees[d$fathersemployees == 1] <- 0
+d$fathersemployees[d$fathersemployees == 2] <- 1
+d$fathersemployees[d$fathersemployees == 3] <- 2
+val_labels(d$fathersemployees) <- c("0 employees" = 0,
+                           "1-25 employees" = 1,
+                           "25+ employees" = 2)
+freq(d$fathersemployees, total = T)
+
+
+d$fathermainjob <- NA
+d$fathermainjob[d$fathersstatus == 1 | d$fathersstatus == 9] <- 1
+d$fathermainjob[d$fathersstatus == 2 & d$fathersemployees == 0] <- 2
+d$fathermainjob[d$fathersstatus == 2 & d$fathersemployees == 1] <- 3
+d$fathermainjob[d$fathersstatus == 2 & d$fathersemployees == 2] <- 4
+d$fathermainjob[d$fathersstatus == 3] <- 5
+d$fathermainjob[d$fathersstatus == 4] <- 6 #no té pare
+
+val_labels(d$fathermainjob) <- c("Not self-employed" = 1,
+                                  "Self-empl without employees" = 2,
+                                  "Self-empl with 1-9 employees" = 3,
+                                  "Self-empl with 10 or more" = 4,
+                                  "Unemployed"=5,
+                                  "Respondent's farther is death"=6)
+var_label(d$fathermainjob) <- "Father's employment status"
+freq(d$fathermainjob, total = T)
+
+#################################################
+# Create Oesch class schema for father
+#################################################
+
+d$class16_f_r <- -9
+
+# Large employers (1)
+
+d$class16_f_r[d$fathermainjob == 4] <- 1
+
+# Self-employed professionals (2)
+
+d$class16_f_r[(d$fathermainjob == 2 | d$fathermainjob == 3) & d$fathersjob >= 2000 & d$fathersjob <= 2229] <- 2
+d$class16_f_r[(d$fathermainjob == 2 | d$fathermainjob == 3) & d$fathersjob >= 2300 & d$fathersjob <= 2470] <- 2
+
+# Small business owners with employees (3)
+
+d$class16_f_r[d$fathermainjob == 3 & d$fathersjob >= 1000 & d$fathersjob <= 1999] <- 3
+d$class16_f_r[d$fathermainjob == 3 & d$fathersjob >= 3000 & d$fathersjob <= 9333] <- 3
+d$class16_f_r[d$fathermainjob == 3 & d$fathersjob == 2230] <- 3
+
+# Small business owners without employees (4)
+
+d$class16_f_r[d$fathermainjob == 2 & d$fathersjob >= 1000 & d$fathersjob <= 1999] <- 4
+d$class16_f_r[d$fathermainjob == 2 & d$fathersjob >= 3000 & d$fathersjob <= 9333] <- 4
+d$class16_f_r[d$fathermainjob == 2 & d$fathersjob == 2230] <- 4
+
+# Technical experts (5)
+
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 2100 &  d$fathersjob <= 2213] <- 5
+
+# Technicians (6)
+
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 3100 &  d$fathersjob <= 3152] <- 6
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 3210 &  d$fathersjob <= 3213] <- 6
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 3434] <- 6
+
+# Skilled manual (7)
+
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 6000 &  d$fathersjob <= 7442] <- 7
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 8310 &  d$fathersjob <= 8312] <- 7
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 8324 &  d$fathersjob <= 8330] <- 7
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 8332 &  d$fathersjob <= 8340] <- 7
+
+# Low-skilled manual (8)
+
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 8000 &  d$fathersjob <= 8300] <- 8
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 8320 &  d$fathersjob <= 8321] <- 8
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 8331] <- 8
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 9153 &  d$fathersjob <= 9333] <- 8
+
+# Higher-grade managers and administrators (9)
+
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 1000 &  d$fathersjob <= 1239] <- 9
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 2400 &  d$fathersjob <= 2429] <- 9
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 2441] <- 9
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 2470] <- 9
+
+# Lower-grade managers and administrators (10)
+
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 1300 &  d$fathersjob <= 1319] <- 10
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 3400 &  d$fathersjob <= 3433] <- 10
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 3440 &  d$fathersjob <= 3450] <- 10
+
+# Skilled clerks (11)
+
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 4000 &  d$fathersjob <= 4112] <- 11
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 4114 &  d$fathersjob <= 4210] <- 11
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 4212 &  d$fathersjob <= 4222] <- 11
+
+# Unskilled clerks (12)
+
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 4113] <- 12
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 4211] <- 12
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 4223] <- 12
+
+# Socio-cultural professionals (13)
+
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 2220 &  d$fathersjob <= 2229] <- 13
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 2300 &  d$fathersjob <= 2320] <- 13
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 2340 &  d$fathersjob <= 2359] <- 13
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 2430 &  d$fathersjob <= 2440] <- 13
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 2442 &  d$fathersjob <= 2443] <- 13
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 2445] <- 13
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 2451] <- 13
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 2460] <- 13
+
+# Socio-cultural semi-professionals (14)
+
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 2230] <- 14
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 2330 &  d$fathersjob <= 2332] <- 14
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 2444] <- 14
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 2446 &  d$fathersjob <= 2450] <- 14
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 2452 &  d$fathersjob <= 2455] <- 14
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 3200] <- 14
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 3220 &  d$fathersjob <= 3224] <- 14
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 3226] <- 14
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 3229 &  d$fathersjob <= 3340] <- 14
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 3460 &  d$fathersjob <= 3472] <- 14
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 3480] <- 14
+
+# Skilled service (15)
+
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 3225] <- 15
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 3227 &  d$fathersjob <= 3228] <- 15
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 3473 &  d$fathersjob <= 3475] <- 15
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 5000 &  d$fathersjob <= 5113] <- 15
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 5122] <- 15
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 5131 &  d$fathersjob <= 5132] <- 15
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 5140 &  d$fathersjob <= 5141] <- 15
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 5143] <- 15
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 5160 &  d$fathersjob <= 5220] <- 15
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 8323] <- 15
+
+# Low-skilled service (16)
+
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 5120 &  d$fathersjob <= 5121] <- 16
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 5123 &  d$fathersjob <= 5130] <- 16
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 5133 &  d$fathersjob <= 5139] <- 16
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 5142] <- 16
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 5149] <- 16
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 5230] <- 16
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob == 8322] <- 16
+d$class16_f_r[d$fathermainjob == 1 & d$fathersjob >= 9100 &  d$fathersjob <= 9152] <- 16
+
+
+d$class16_f_r[d$class16_f_r == -9] <- NA
+val_labels(d$class16_f_r) <- c("Large employers" = 1,
+                             "Self-employed professionals" = 2,
+                             "Small business owners with employees" = 3,
+                             "Small business owners without employees" = 4,
+                             "Technical experts" = 5,
+                             "Technicians" = 6,
+                             "Skilled manual" = 7,
+                             "Low-skilled manual" = 8,
+                             "Higher-grade managers and administrators" = 9,
+                             "Lower-grade managers and administrators" = 10,
+                             "Skilled clerks" = 11,
+                             "Unskilled clerks" = 12,
+                             "Socio-cultural professionals" = 13,
+                             "Socio-cultural semi-professionals" = 14,
+                             "Skilled service" = 15,
+                             "Low-skilled service" = 16)
+var_label(d$class16_f_r) <- "Respondent's Oesch class position - 16 classes"
+freq(d$class16_f_r, total = T)
+
+
+d$class8_f_r <- NA
+d$class8_f_r[d$class16_f_r <= 2] <- 1
+d$class8_f_r[d$class16_f_r == 3 | d$class16_f_r == 4] <- 2
+d$class8_f_r[d$class16_f_r == 5 | d$class16_f_r == 6] <- 3
+d$class8_f_r[d$class16_f_r == 7 | d$class16_f_r == 8] <- 4
+d$class8_f_r[d$class16_f_r == 9 | d$class16_f_r == 10] <- 5
+d$class8_f_r[d$class16_f_r == 11 | d$class16_f_r == 12] <- 6
+d$class8_f_r[d$class16_f_r == 13 | d$class16_f_r == 14] <- 7
+d$class8_f_r[d$class16_f_r == 15 | d$class16_f_r == 16] <- 8
+val_labels(d$class8_f_r) <- c("Self-employed professionals and large employers" = 1,
+                            "Small business owners" = 2,
+                            "Technical (semi-)professionals" = 3,
+                            "Production workers" = 4,
+                            "(Associate) managers" = 5,
+                            "Clerks" = 6,
+                            "Socio-cultural (semi-)professionals" = 7,
+                            "Service workers" = 8)
+var_label(d$class8_f_r) <- "Respondent's Oesch class position - 8 classes"
+freq(d$class8_f_r, total = T)
+
+
+
+d$class5_f_r <- NA
+d$class5_f_r[d$class16_f_r <= 2 | d$class16_f_r == 5 | d$class16_f_r == 9 | d$class16_f_r == 13] <- 1
+d$class5_f_r[d$class16_f_r == 6 | d$class16_f_r == 10 | d$class16_f_r == 14] <- 2
+d$class5_f_r[d$class16_f_r == 3 | d$class16_f_r == 4] <- 3
+d$class5_f_r[d$class16_f_r == 7 | d$class16_f_r == 11 | d$class16_f_r == 15] <- 4
+d$class5_f_r[d$class16_f_r == 8 | d$class16_f_r == 12 | d$class16_f_r == 16] <- 5
+val_labels(d$class5_f_r) <- c("Higher-grade service class" = 1,
+                            "Lower-grade service class" = 2,
+                            "Small business owners" = 3,
+                            "Skilled workers" = 4,
+                            "Unskilled workers" = 5)
+var_label(d$class5_f_r) <- "Respondent's Oesch class position - 5 classes"
+freq(d$class5_f_r, total = T)
+```
+
+# CLASSE SOCIAL MARE
+
+```{r}
+
+
+d$mothersjob <- d$misko
+d$mothersjob[is.na(d$mothersjob)] <- -9
+var_label(d$mothersjob) <- "Mother's occupation - isco88 4-digit"
+
+head(freq(d$mothersjob, total = T))
+
+
+#### Recode employment status for mother
+
+freq(d$emprm14, total = T)
+freq(d$emplnom, total = T)
+
+d$mothersstatus <- d$emprm14
+d$mothersstatus[is.na(d$mothersstatus)] <- 9
+d$mothersstatus[d$cntry == "FR" & (d$essround == 1 | d$essround == 2)] <- -9 # Replace this command line with [SYNTAX A] or [SYNTAX C]
+d$mothersstatus[d$cntry == "HU" & d$essround == 2] <- -9 # Replace this command line with [SYNTAX E]
+val_label(d$mothersstatus, 9) <- "Missing"
+freq(d$mothersstatus, total = T)
+
+
+d$mothersemployees <- d$emplnom
+d$mothersemployees[d$mothersemployees == 1] <- 0
+d$mothersemployees[d$mothersemployees == 2] <- 1
+d$mothersemployees[d$mothersemployees == 3] <- 2
+val_labels(d$mothersemployees) <- c("0 employees" = 0,
+                                    "1-25 employees" = 1,
+                                    "25+ employees" = 2)
+freq(d$mothersemployees, total = T)
+
+
+d$mothermainjob <- NA
+d$mothermainjob[d$mothersstatus == 1 | d$mothersstatus == 9] <- 1
+d$mothermainjob[d$mothersstatus == 2 & d$mothersemployees == 0] <- 2
+d$mothermainjob[d$mothersstatus == 2 & d$mothersemployees == 1] <- 3
+d$mothermainjob[d$mothersstatus == 2 & d$mothersemployees == 2] <- 4
+d$mothermainjob[d$mothersstatus == 3] <- 5
+d$mothermainjob[d$mothersstatus == 4] <- 6 #no té mare
+
+val_labels(d$mothermainjob) <- c("Not self-employed" = 1,
+                                 "Self-empl without employees" = 2,
+                                 "Self-empl with 1-9 employees" = 3,
+                                 "Self-empl with 10 or more" = 4,
+                                 "Unemployed"=5,
+                                 "Respondent's farther is death"=6)
+var_label(d$mothermainjob) <- "mother's employment status"
+freq(d$mothermainjob, total = T)
+
+#################################################
+# Create Oesch class schema for mother
+#################################################
+
+d$class16_m_r <- -9
+
+# Large employers (1)
+
+d$class16_m_r[d$mothermainjob == 4] <- 1
+
+# Self-employed professionals (2)
+
+d$class16_m_r[(d$mothermainjob == 2 | d$mothermainjob == 3) & d$mothersjob >= 2000 & d$mothersjob <= 2229] <- 2
+d$class16_m_r[(d$mothermainjob == 2 | d$mothermainjob == 3) & d$mothersjob >= 2300 & d$mothersjob <= 2470] <- 2
+
+# Small business owners with employees (3)
+
+d$class16_m_r[d$mothermainjob == 3 & d$mothersjob >= 1000 & d$mothersjob <= 1999] <- 3
+d$class16_m_r[d$mothermainjob == 3 & d$mothersjob >= 3000 & d$mothersjob <= 9333] <- 3
+d$class16_m_r[d$mothermainjob == 3 & d$mothersjob == 2230] <- 3
+
+# Small business owners without employees (4)
+
+d$class16_m_r[d$mothermainjob == 2 & d$mothersjob >= 1000 & d$mothersjob <= 1999] <- 4
+d$class16_m_r[d$mothermainjob == 2 & d$mothersjob >= 3000 & d$mothersjob <= 9333] <- 4
+d$class16_m_r[d$mothermainjob == 2 & d$mothersjob == 2230] <- 4
+
+# Technical experts (5)
+
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 2100 &  d$mothersjob <= 2213] <- 5
+
+# Technicians (6)
+
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 3100 &  d$mothersjob <= 3152] <- 6
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 3210 &  d$mothersjob <= 3213] <- 6
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 3434] <- 6
+
+# Skilled manual (7)
+
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 6000 &  d$mothersjob <= 7442] <- 7
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 8310 &  d$mothersjob <= 8312] <- 7
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 8324 &  d$mothersjob <= 8330] <- 7
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 8332 &  d$mothersjob <= 8340] <- 7
+
+# Low-skilled manual (8)
+
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 8000 &  d$mothersjob <= 8300] <- 8
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 8320 &  d$mothersjob <= 8321] <- 8
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 8331] <- 8
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 9153 &  d$mothersjob <= 9333] <- 8
+
+# Higher-grade managers and administrators (9)
+
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 1000 &  d$mothersjob <= 1239] <- 9
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 2400 &  d$mothersjob <= 2429] <- 9
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 2441] <- 9
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 2470] <- 9
+
+# Lower-grade managers and administrators (10)
+
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 1300 &  d$mothersjob <= 1319] <- 10
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 3400 &  d$mothersjob <= 3433] <- 10
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 3440 &  d$mothersjob <= 3450] <- 10
+
+# Skilled clerks (11)
+
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 4000 &  d$mothersjob <= 4112] <- 11
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 4114 &  d$mothersjob <= 4210] <- 11
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 4212 &  d$mothersjob <= 4222] <- 11
+
+# Unskilled clerks (12)
+
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 4113] <- 12
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 4211] <- 12
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 4223] <- 12
+
+# Socio-cultural professionals (13)
+
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 2220 &  d$mothersjob <= 2229] <- 13
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 2300 &  d$mothersjob <= 2320] <- 13
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 2340 &  d$mothersjob <= 2359] <- 13
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 2430 &  d$mothersjob <= 2440] <- 13
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 2442 &  d$mothersjob <= 2443] <- 13
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 2445] <- 13
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 2451] <- 13
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 2460] <- 13
+
+# Socio-cultural semi-professionals (14)
+
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 2230] <- 14
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 2330 &  d$mothersjob <= 2332] <- 14
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 2444] <- 14
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 2446 &  d$mothersjob <= 2450] <- 14
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 2452 &  d$mothersjob <= 2455] <- 14
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 3200] <- 14
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 3220 &  d$mothersjob <= 3224] <- 14
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 3226] <- 14
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 3229 &  d$mothersjob <= 3340] <- 14
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 3460 &  d$mothersjob <= 3472] <- 14
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 3480] <- 14
+
+# Skilled service (15)
+
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 3225] <- 15
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 3227 &  d$mothersjob <= 3228] <- 15
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 3473 &  d$mothersjob <= 3475] <- 15
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 5000 &  d$mothersjob <= 5113] <- 15
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 5122] <- 15
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 5131 &  d$mothersjob <= 5132] <- 15
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 5140 &  d$mothersjob <= 5141] <- 15
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 5143] <- 15
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 5160 &  d$mothersjob <= 5220] <- 15
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 8323] <- 15
+
+# Low-skilled service (16)
+
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 5120 &  d$mothersjob <= 5121] <- 16
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 5123 &  d$mothersjob <= 5130] <- 16
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 5133 &  d$mothersjob <= 5139] <- 16
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 5142] <- 16
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 5149] <- 16
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 5230] <- 16
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob == 8322] <- 16
+d$class16_m_r[d$mothermainjob == 1 & d$mothersjob >= 9100 &  d$mothersjob <= 9152] <- 16
+
+
+d$class16_m_r[d$class16_m_r == -9] <- NA
+val_labels(d$class16_m_r) <- c("Large employers" = 1,
+                             "Self-employed professionals" = 2,
+                             "Small business owners with employees" = 3,
+                             "Small business owners without employees" = 4,
+                             "Technical experts" = 5,
+                             "Technicians" = 6,
+                             "Skilled manual" = 7,
+                             "Low-skilled manual" = 8,
+                             "Higher-grade managers and administrators" = 9,
+                             "Lower-grade managers and administrators" = 10,
+                             "Skilled clerks" = 11,
+                             "Unskilled clerks" = 12,
+                             "Socio-cultural professionals" = 13,
+                             "Socio-cultural semi-professionals" = 14,
+                             "Skilled service" = 15,
+                             "Low-skilled service" = 16)
+var_label(d$class16_m_r) <- "Respondent's Oesch class position - 16 classes"
+freq(d$class16_m_r, total = T)
+
+
+d$class8_m_r <- NA
+d$class8_m_r[d$class16_m_r <= 2] <- 1
+d$class8_m_r[d$class16_m_r == 3 | d$class16_m_r == 4] <- 2
+d$class8_m_r[d$class16_m_r == 5 | d$class16_m_r == 6] <- 3
+d$class8_m_r[d$class16_m_r == 7 | d$class16_m_r == 8] <- 4
+d$class8_m_r[d$class16_m_r == 9 | d$class16_m_r == 10] <- 5
+d$class8_m_r[d$class16_m_r == 11 | d$class16_m_r == 12] <- 6
+d$class8_m_r[d$class16_m_r == 13 | d$class16_m_r == 14] <- 7
+d$class8_m_r[d$class16_m_r == 15 | d$class16_m_r == 16] <- 8
+val_labels(d$class8_m_r) <- c("Self-employed professionals and large employers" = 1,
+                            "Small business owners" = 2,
+                            "Technical (semi-)professionals" = 3,
+                            "Production workers" = 4,
+                            "(Associate) managers" = 5,
+                            "Clerks" = 6,
+                            "Socio-cultural (semi-)professionals" = 7,
+                            "Service workers" = 8)
+var_label(d$class8_m_r) <- "Respondent's Oesch class position - 8 classes"
+freq(d$class8_m_r, total = T)
+
+
+
+d$class5_m_r <- NA
+d$class5_m_r[d$class16_m_r <= 2 | d$class16_m_r == 5 | d$class16_m_r == 9 | d$class16_m_r == 13] <- 1
+d$class5_m_r[d$class16_m_r == 6 | d$class16_m_r == 10 | d$class16_m_r == 14] <- 2
+d$class5_m_r[d$class16_m_r == 3 | d$class16_m_r == 4] <- 3
+d$class5_m_r[d$class16_m_r == 7 | d$class16_m_r == 11 | d$class16_m_r == 15] <- 4
+d$class5_m_r[d$class16_m_r == 8 | d$class16_m_r == 12 | d$class16_m_r == 16] <- 5
+val_labels(d$class5_m_r) <- c("Higher-grade service class" = 1,
+                            "Lower-grade service class" = 2,
+                            "Small business owners" = 3,
+                            "Skilled workers" = 4,
+                            "Unskilled workers" = 5)
+var_label(d$class5_m_r) <- "Respondent's Oesch class position - 5 classes"
+freq(d$class5_m_r, total = T)
+
+
+```
+
+# Ens quedem amb la posició més alta del pare i la mare:
+
+```{r}
+d$originclass <- ifelse(is.na(d$class5_f), d$class5_m,
+                        ifelse(is.na(d$class5_m), d$class5_f,
+                               pmin(d$class5_f, d$class5_m)))
+
+val_labels(d$originclass) <- c("Higher-grade service class" = 1,
+                            "Lower-grade service class" = 2,
+                            "Small business owners" = 3,
+                            "Skilled workers" = 4,
+                            "Unskilled workers" = 5, 
+                            "Both parents are unemployed" = 6,
+                            "Both parents are death" = 7
+)
+var_label(d$originclass) <- "Origin's class Oesch class position - 5 classes"
+freq(d$originclass, total = T)
+
+d <-  unlabelled(d, drop_unused_labels = TRUE)
+```
+
+```{r}
+dadesorigen <- subset(d, select = c("essround", "idno", "cntry",  "gndr", "yrbrn", "originclass"))
+write.csv(dadesorigen, "dadesorigen.csv", row.names = FALSE)
+```

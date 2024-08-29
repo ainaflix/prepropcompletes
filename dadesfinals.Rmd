@@ -1,0 +1,408 @@
+---
+title: "Dades Finals"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+library(dplyr)
+library(haven)
+library(knitr)
+library(tidyverse)
+library(ggrepel)
+library(logmult)
+library(MASS)
+library(xtable)
+library(flextable)
+library(officer)
+library(dplyr)
+library(ggplot2)
+library(labelled)
+library(questionr)
+```
+
+```{r}
+create_nice_table <- function(data, title) {
+  flextable(data) %>%
+    set_table_properties(width = 1, layout = "autofit") %>%
+    theme_zebra() %>%
+    theme_vanilla() %>%º
+    set_caption(title)
+}
+
+```
+
+
+# IMPORTEM LES DADES I AJUNTEM ELS DATAFRAMES
+
+```{r}
+dadesorigen <- read.csv("~/uni/5è/tfg estadistica/DADES ESTADISTICA/dadesorigen.csv")
+dadesdesti <- read.csv("~/uni/5è/tfg estadistica/DADES ESTADISTICA/dadesdesti.csv")
+dades<- inner_join( dadesorigen, dadesdesti , by = c("essround", "idno", "gndr", "yrbrn"))
+
+dades<- dades[, -c(3)]
+dades <- dades %>% rename("cntry" = "cntry.y")
+dades <- subset(dades, cntry != "IS")
+```
+
+
+
+
+# REGIONS EB
+
+Generació de la variable de tipus d'estat del Benestar, segons si el seu model és liberal (1), socialdemòcrata (2), conservador (3), familiarista (4)
+
+```{r}
+library(dplyr)
+dades <- dades %>% 
+  mutate(modeb = case_when(
+    cntry %in% c("GB", "IE", "CH", "LU", "CY") ~ 1,
+    cntry %in% c("SE", "NO", "DK", "FI", "IS") ~ 2,
+    cntry %in% c("DE", "FR", "AT", "BE", "NL") ~ 3,
+    cntry %in% c("IT", "ES", "GR", "PT") ~ 4
+  ))
+sapply(dades, class)
+
+dades$modeb<- as.factor(dades$modeb)
+```
+
+Eliminem del dataframe els altres paisos:
+
+```{r}
+dades <- dades[!is.na(dades$modeb), ]
+```
+
+# COHORT EDAT:
+
+```{r}
+dades <- subset(dades, yrbrn >= 1937 & yrbrn <= 1980)
+
+dades$cohort <- cut(dades$yrbrn, breaks = c(1937, 1949, 1960, 1970, 1980),
+                    labels = c("1937-1949", "1950-1960", "1961-1970", "1971-1980"),
+                    include.lowest = TRUE)
+```
+
+# GÈNERE
+
+```{r}
+dades$gndr <- ifelse(dades$gndr == 9, NA, dades$gndr)
+```
+
+# CLASSE
+
+```{r}
+
+dades$originclass <- ifelse(dades$originclass == "Both parents are death", NA, dades$originclass)
+dades$originclass <- ifelse(dades$originclass == "Both parents are unemployed", NA, dades$originclass)
+
+```
+
+
+
+
+# MIGRACIÓ
+
+## MIGRANT SENSE PAPERS
+
+Explicar que la mostra es molt petita si estudiem la relació entre cada país i el que farem es estudiar-la per continents. 
+```{r}
+sapply(dades, class)
+mig.factor <- c("ctzcntr", "ctzship", "brncntr", "cntbrth", "facntr", "facntn", "mocntr", "mocntn")
+dades[mig.factor] <- lapply(dades[mig.factor], factor)
+
+summary(dades$ctzcntr)
+dades$ctzcntr[dades$ctzcntr %in% c(7,8,9)] <- NA
+dades$ctzcntr <- droplevels(dades$ctzcntr)
+summary(dades$ctzcntr)
+```
+ 
+```{r}
+
+dades <- dades %>% 
+  mutate(ctzship = case_when(
+    ctzship %in% c("01", "02", "03", "04", "06", "AD", "AL", "AT", "AX", "BE", "BG", "BY", "CH", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR","GB", "GE", "GI", "GR", "HR", "HU", "IE", "IS", "IT", "JE", "LI", "LT", "LU", "LV", "MC", "MD", "ME", "MK", "MT", "NL", "NO", "PL", "PT", "RO", "RS", "RU", "SE", "SI", "SK", "SM", "UA", "VA", "BA", "CS", "FO", "SU","YU") ~ "Europa",
+    ctzship %in% c("AO", "BF", "BI", "BJ", "BW", "CD", "CF", "CG", "CI", "CM", "CV", "DJ", "DZ", "EG", "EH", "ER", "ET", "GA", "GH", "GM", "GN", "GQ", "GW", "KE", "KM", "LR", "LS", "LY", "MA", "MG", "ML", "MR", "MU", "MW", "MZ", "NA", "NE", "NG", "RW", "SC", "SD", "SL", "SN", "SO", "ST", "SZ", "TD", "TG", "TN", "TZ", "UG", "ZA", "ZM", "ZW", "RE", "YT", "SH") ~ "Àfrica",
+    ctzship %in% c("05", "AE", "AF", "AM", "AZ", "BH", "BD", "BN", "BT", "KH", "CN", "HK", "ID", "IQ", "IR", "IL", "IN", "JP", "JO", "KZ", "KG", "KW", "LB", "LA", "MY", "MV", "MN", "MM", "NP", "OM", "PK", "PH", "QA", "SA", "SG", "KR", "KP", "SY", "TJ", "TH", "TL", "TM", "TW", "UZ", "VN", "YE", "LK", "MO", "PS", "TR") ~ "Àsia",
+    ctzship %in% c("CA", "US", "GL") ~ "Nord Amèrica",
+    ctzship %in% c("BM","MX", "AG", "AI", "AW", "BS", "BB", "BZ", "CR", "CU", "DM", "DO", "SV", "GD", "GT", "HT", "HN", "JM", "NI", "PA", "PR", "KN", "LC", "VC", "TT", "VI", "VG", "AR", "BO", "BR", "CL", "CO", "EC", "FK", "GF", "GY", "PY", "PE", "SR", "UY", "VE", "AN", "BL","GP", "MQ") ~ "Sud Amèrica i Carib",
+    ctzship %in% c("AS", "AU", "CC", "CK", "FJ", "PF", "GU", "HM", "KI", "MH", "FM", "NR", "NC", "NU", "NZ", "MP", "PW", "PG", "WS", "SB", "TK", "TO", "TV", "VU", "WF", "CX") ~ "Australàsia",
+    TRUE ~ (ctzship)
+  ))
+
+dades <- dades %>%
+  mutate(ctzship = case_when(
+    ctzship %in% c("1") ~ "Europa",
+    ctzship %in% c("2") ~ "Àfrica",
+    ctzship %in% c("3") ~ "Àsia",
+    ctzship %in% c("4") ~ "Nord Amèrica",
+    ctzship %in% c("5") ~ "Sud Amèrica i Carib",
+    ctzship %in% c("6") ~ "Australàsia",
+    TRUE ~ as.character(ctzship)  
+  ))
+
+```
+
+```{r}
+dades$ctzship<-as.factor(dades$ctzship)
+dades$ctzship[dades$ctzship %in% c(77,88,99)] <- NA
+dades$ctzship <- droplevels(dades$ctzship)
+summary(dades$ctzship)
+```
+
+
+## MIGRANT
+
+```{r}
+summary(dades$brncntr)
+dades$brncntr[dades$brncntr %in% c(7,8,9)] <- NA
+dades$brncntr <- droplevels(dades$brncntr)
+```
+
+```{r}
+
+dades$cntbrth[dades$cntbrth %in% c(77,88,99)] <- NA
+dades$cntbrth <- droplevels(dades$cntbrth)
+
+
+dades <- dades %>% 
+  mutate(cntbrth = case_when(
+    cntbrth %in% c("01", "02", "03", "04", "06", "AD", "AL", "AT", "AX", "BE", "BG", "BY", "CH", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR","GB", "GE", "GI", "GR", "HR", "HU", "IE", "IS", "IT", "JE", "LI", "LT", "LU", "LV", "MC", "MD", "ME", "MK", "MT", "NL", "NO", "PL", "PT", "RO", "RS", "RU", "SE", "SI", "SK", "SM", "UA", "VA", "BA", "CS", "FO", "SU", "YU") ~ "Europa",
+    cntbrth %in% c("AO", "BF", "BI", "BJ", "BW", "CD", "CF", "CG", "CI", "CM", "CV", "DJ", "DZ", "EG", "EH", "ER", "ET", "GA", "GH", "GM", "GN", "GQ", "GW", "KE", "KM", "LR", "LS", "LY", "MA", "MG", "ML", "MR", "MU", "MW", "MZ", "NA", "NE", "NG", "RW", "SC", "SD", "SL", "SN", "SO", "ST", "SZ", "TD", "TG", "TN", "TZ", "UG", "ZA", "ZM", "ZW", "RE", "YT") ~ "Àfrica",
+    cntbrth %in% c("05", "AE", "AF", "AM", "AZ", "BH", "BD", "BN", "BT", "KH", "CN", "HK", "ID", "IQ", "IR", "IL", "IN", "JP", "JO", "KZ", "KG", "KW", "LB", "LA", "MY", "MV", "MN", "MM", "NP", "OM", "PK", "PH", "QA", "SA", "SG", "KR", "KP", "SY", "TJ", "TH", "TL", "TM", "TW", "UZ", "VN", "YE", "LK", "MO", "PS", "TR") ~ "Àsia",
+    cntbrth %in% c("CA", "US", "GL") ~ "Nord Amèrica",
+    cntbrth %in% c("BM","MX", "AG", "AI", "AW", "BS", "BB", "BZ", "CR", "CU", "DM", "DO", "SV", "GD", "GT", "HT", "HN", "JM", "NI", "PA", "PR", "KN", "LC", "VC", "TT", "VI", "VG", "AR", "BO", "BR", "CL", "CO", "EC", "FK", "GF", "GY", "PY", "PE", "SR", "UY", "VE", "AN", "BL","GP", "MQ", "MS") ~ "Sud Amèrica i Carib",
+    cntbrth %in% c("AS", "AU", "CC", "CK", "FJ", "PF", "GU", "HM", "KI", "MH", "FM", "NR", "NC", "NU", "NZ", "MP", "PW", "PG", "WS", "SB", "TK", "TO", "TV", "VU", "WF", "CX", "AQ") ~ "Australàsia",
+    TRUE ~ (cntbrth)
+  ))
+
+dades <- dades %>%
+  mutate(cntbrth = case_when(
+    cntbrth %in% c("1") ~ "Europa",
+    cntbrth %in% c("2") ~ "Àfrica",
+    cntbrth %in% c("3") ~ "Àsia",
+    cntbrth %in% c("4") ~ "Nord Amèrica",
+    cntbrth %in% c("5") ~ "Sud Amèrica i Carib",
+    cntbrth %in% c("6") ~ "Australàsia",
+    TRUE ~ as.character(cntbrth)  
+  ))
+dades$cntbrth<-as.factor(dades$cntbrth)
+summary(dades$cntbrth)
+
+```
+
+## PARE MIGRANT
+
+```{r}
+summary(dades$facntr)
+dades$facntr[dades$facntr %in% c(7,8,9)] <- NA
+dades$facntr <- droplevels(dades$facntr)
+
+```
+
+
+
+```{r}
+summary(dades$facntn)
+dades$facntn[dades$facntn %in% c(77,88,99)] <- NA
+dades$facntn <- droplevels(dades$facntn)
+
+dades <- dades %>% 
+  mutate(facntn = case_when(
+    facntn %in% c("01", "02", "03", "04", "06", "AD", "AL", "AT", "AX", "BE", "BG", "BY", "CH", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR","GB", "GE", "GI", "GR", "HR", "HU", "IE", "IS", "IT", "JE", "LI", "LT", "LU", "LV", "MC", "MD", "ME", "MK", "MT", "NL", "NO", "PL", "PT", "RO", "RS", "RU", "SE", "SI", "SK", "SM", "UA", "VA", "BA", "CS", "FO") ~ "Europa",
+    facntn %in% c("AO", "BF", "BI", "BJ", "BW", "CD", "CF", "CG", "CI", "CM", "CV", "DJ", "DZ", "EG", "EH", "ER", "ET", "GA", "GH", "GM", "GN", "GQ", "GW", "KE", "KM", "LR", "LS", "LY", "MA", "MG", "ML", "MR", "MU", "MW", "MZ", "NA", "NE", "NG", "RW", "SC", "SD", "SL", "SN", "SO", "ST", "SZ", "TD", "TG", "TN", "TZ", "UG", "ZA", "ZM", "ZW", "RE", "YT") ~ "Àfrica",
+    facntn %in% c("05", "AE", "AF", "AM", "AZ", "BH", "BD", "BN", "BT", "KH", "CN", "HK", "ID", "IQ", "IR", "IL", "IN", "JP", "JO", "KZ", "KG", "KW", "LB", "LA", "MY", "MV", "MN", "MM", "NP", "OM", "PK", "PH", "QA", "SA", "SG", "KR", "KP", "SY", "TJ", "TH", "TL", "TM", "TW", "UZ", "VN", "YE", "LK", "MO", "PS", "TR") ~ "Àsia",
+    facntn %in% c("CA", "US", "GL") ~ "Nord Amèrica",
+    facntn %in% c("BM","MX", "AG", "AI", "AW", "BS", "BB", "BZ", "CR", "CU", "DM", "DO", "SV", "GD", "GT", "HT", "HN", "JM", "NI", "PA", "PR", "KN", "LC", "VC", "TT", "VI", "VG", "AR", "BO", "BR", "CL", "CO", "EC", "FK", "GF", "GY", "PY", "PE", "SR", "UY", "VE", "AN", "BL","GP", "MQ", "MS") ~ "Sud Amèrica i Carib",
+    facntn %in% c("AS", "AU", "CC", "CK", "FJ", "PF", "GU", "HM", "KI", "MH", "FM", "NR", "NC", "NU", "NZ", "MP", "PW", "PG", "WS", "SB", "TK", "TO", "TV", "VU", "WF", "CX", "AS") ~ "Australàsia",
+    TRUE ~ (facntn)
+  ))
+
+dades <- dades %>%
+  mutate(facntn = case_when(
+    facntn %in% c("1") ~ "Europa",
+    facntn %in% c("2") ~ "Àfrica",
+    facntn %in% c("3") ~ "Àsia",
+    facntn %in% c("4") ~ "Nord Amèrica",
+    facntn %in% c("5") ~ "Sud Amèrica i Carib",
+    facntn %in% c("6") ~ "Australàsia",
+    TRUE ~ as.character(facntn)  
+  ))
+dades$facntn<-as.factor(dades$facntn)
+
+summary(dades$facntn)
+```
+
+## MARE MIGRANT
+
+```{r}
+summary(dades$mocntr)
+dades$mocntr[dades$mocntr %in% c(7,8,9)] <- NA
+dades$mocntr <- droplevels(dades$mocntr)
+
+```
+
+
+
+```{r}
+summary(dades$mocntn)
+dades$mocntn[dades$mocntn %in% c(77,88,99)] <- NA
+dades$mocntn <- droplevels(dades$mocntn)
+
+dades <- dades %>% 
+  mutate(mocntn = case_when(
+    mocntn %in% c("01", "02", "03", "04", "06", "AD", "AL", "AT", "AX", "BE", "BG", "BY", "CH", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR","GB", "GE", "GI", "GR", "HR", "HU", "IE", "IS", "IT", "JE", "LI", "LT", "LU", "LV", "MC", "MD", "ME", "MK", "MT", "NL", "NO", "PL", "PT", "RO", "RS", "RU", "SE", "SI", "SK", "SM", "UA", "VA", "BA", "CS", "FO") ~ "Europa",
+    mocntn %in% c("AO", "BF", "BI", "BJ", "BW", "CD", "CF", "CG", "CI", "CM", "CV", "DJ", "DZ", "EG", "EH", "ER", "ET", "GA", "GH", "GM", "GN", "GQ", "GW", "KE", "KM", "LR", "LS", "LY", "MA", "MG", "ML", "MR", "MU", "MW", "MZ", "NA", "NE", "NG", "RW", "SC", "SD", "SL", "SN", "SO", "ST", "SZ", "TD", "TG", "TN", "TZ", "UG", "ZA", "ZM", "ZW", "RE", "YT") ~ "Àfrica",
+    mocntn %in% c("05", "AE", "AF", "AM", "AZ", "BH", "BD", "BN", "BT", "KH", "CN", "HK", "ID", "IQ", "IR", "IL", "IN", "JP", "JO", "KZ", "KG", "KW", "LB", "LA", "MY", "MV", "MN", "MM", "NP", "OM", "PK", "PH", "QA", "SA", "SG", "KR", "KP", "SY", "TJ", "TH", "TL", "TM", "TW", "UZ", "VN", "YE", "LK", "MO", "PS", "TR") ~ "Àsia",
+    mocntn %in% c("CA", "US", "GL") ~ "Nord Amèrica",
+    mocntn %in% c("BM","MX", "AG", "AI", "AW", "BS", "BB", "BZ", "CR", "CU", "DM", "DO", "SV", "GD", "GT", "HT", "HN", "JM", "NI", "PA", "PR", "KN", "LC", "VC", "TT", "VI", "VG", "AR", "BO", "BR", "CL", "CO", "EC", "FK", "GF", "GY", "PY", "PE", "SR", "UY", "VE", "AN", "BL","GP", "MQ", "MS") ~ "Sud Amèrica i Carib",
+    mocntn %in% c("AS", "AU", "CC", "CK", "FJ", "PF", "GU", "HM", "KI", "MH", "FM", "NR", "NC", "NU", "NZ", "MP", "PW", "PG", "WS", "SB", "TK", "TO", "TV", "VU", "WF", "CX", "NF", "AS") ~ "Australàsia",
+    TRUE ~ (mocntn)
+  ))
+
+dades <- dades %>%
+  mutate(mocntn = case_when(
+    mocntn %in% c("1") ~ "Europa",
+    mocntn %in% c("2") ~ "Àfrica",
+    mocntn %in% c("3") ~ "Àsia",
+    mocntn %in% c("4") ~ "Nord Amèrica",
+    mocntn %in% c("5") ~ "Sud Amèrica i Carib",
+    mocntn %in% c("6") ~ "Australàsia",
+    TRUE ~ as.character(mocntn)  
+  ))
+dades$mocntn<-as.factor(dades$mocntn)
+
+```
+
+
+## CODIFICACIÓ VARIABLE MIGRACIÓ
+
+No l'introduïm: 
+
+```{r}
+#dades$migracio<- NA
+
+#dades$migracio <- ifelse(dades$ctzcntr == 2, paste("Migrant sense papers ", dades$ctzship), dades$migracio)
+
+#dades$migracio <- ifelse(dades$brncntr == 2, paste("Migrant", dades$cntbrth),dades$migracio)
+
+#dades$migracio <- ifelse(dades$facntr == 2 & dades$mocntr != 2, paste("Pare migrant", dades$facntn) ,dades$migracio)
+
+#dades$migracio <- ifelse(dades$mocntr == 2 & dades$facntr != 2, paste("Mare migrant", dades$mocntn), dades$migracio)
+
+#dades$migracio <- ifelse(dades$facntr == 2 & dades$mocntr == 2 , paste("Pare i mare migrant ", dades$facntn, "i", dades$mocntn), dades$migracio)
+
+#dades$migracio <- ifelse(dades$ctzcntr == 1 & dades$brncntr == 1 & dades$facntr == 1 & dades$mocntr == 1, "no migrant", dades$migracio)
+
+#dades$migracio<- as.factor(dades$migracio)
+```
+
+El bo: 
+
+```{r}
+
+dades$migracio<- NA
+
+dades$migracio <- ifelse(dades$ctzcntr == 2  , paste("Migrant sense papers"), dades$migracio)
+
+dades$migracio <- ifelse(dades$brncntr == 2 & dades$ctzcntr != 2, paste("Migrant"), dades$migracio)
+
+dades$migracio <- ifelse(dades$facntr == 2 & dades$mocntr != 2 & dades$ctzcntr != 2 & dades$brncntr != 2, paste("Pare migrant"), dades$migracio)
+
+dades$migracio <- ifelse(dades$mocntr == 2 & dades$facntr != 2 & dades$ctzcntr != 2 & dades$brncntr != 2, paste("Mare migrant"), dades$migracio)
+
+dades$migracio <- ifelse(dades$facntr == 2 & dades$mocntr == 2 & dades$ctzcntr != 2 & dades$brncntr != 2, paste("Pare i mare migrant"), dades$migracio)
+
+dades$migracio <- ifelse(dades$ctzcntr == 1 & dades$brncntr == 1 & dades$facntr == 1 & dades$mocntr ==
+                           1, paste("No migrant"), dades$migracio)
+
+dades$migracio<- as.factor(dades$migracio)
+```
+
+Pais d'origen
+
+```{r}
+
+dades$origenmigracio<- NA
+
+dades$origenmigracio <- ifelse(dades$migracio == "Migrant sense papers", paste(dades$ctzship),
+                         dades$origenmigracio)
+
+dades$origenmigracio <- ifelse(dades$migracio == "Migrant", paste(dades$cntbrth), dades$origenmigracio)
+
+dades$origenmigracio <- ifelse(dades$migracio == "Pare migrant", paste(dades$facntn),
+                               dades$origenmigracio)
+
+dades$origenmigracio <- ifelse(dades$migracio == "Mare migrant" , paste(dades$mocntn),
+                             dades$origenmigracio)
+
+dades$origenmigracio <- ifelse(dades$migracio == "Pare i mare migrant", paste(dades$facntn, "i",
+                                                                             dades$mocntn),
+                             dades$origenmigracio)
+
+dades$origenmigracio <- ifelse(dades$migracio == "No migrant" & dades$brncntr == 1 & dades$facntr == 1
+                               & dades$mocntr==1, paste("Europa NM"), dades$origenmigracio)
+
+```
+
+Reduïm les categories de la variable:
+
+```{r}
+dades$migr.c <- NA
+
+dades$migr.c <- ifelse(dades$migracio == "Pare migrant" | dades$migracio == "Mare migrant" | dades$migracio == "Pare i mare migrant", paste("2g migrant"), dades$migr.c)
+
+dades$migr.c <- ifelse(dades$migracio == "Migrant"|dades$migracio == "Migrant sense papers" , paste("1g migrant"), dades$migr.c)
+
+dades$migr.c <- ifelse(dades$migracio == "No migrant", paste (dades$migracio), dades$migr.c)
+```
+
+
+
+```{r}
+
+summary(dades$migracio)
+dades$origenmigracio<- as.factor(dades$origenmigracio)
+summary(dades$origenmigracio)
+dades$migr.c<- as.factor(dades$migr.c)
+summary(dades$migr.c)
+
+
+```
+
+
+```{r}
+dades <- dades %>%
+  mutate(origenmigracio = factor(origenmigracio, 
+                         levels = levels(origenmigracio),
+                         labels = case_when(
+                           grepl("^Àfrica", levels(origenmigracio)) ~ "Àfrica",
+                           grepl("^Àsia", levels(origenmigracio)) ~ "Àsia",
+                           grepl("^Nord Amèrica", levels(origenmigracio)) ~ "Nord Amèrica",
+                           grepl("^Europa", levels(origenmigracio)) ~ "Europa",
+                           grepl("^Sud Amèrica", levels(origenmigracio)) ~ "Sud Amèrica i Carib",
+                           grepl("^Australàsia", levels(origenmigracio)) ~ "Australàsia",
+                           TRUE ~ levels(origenmigracio))))
+
+```
+
+
+# COMPLETE CASES
+
+```{r}
+dades <- dades %>% filter(origenmigracio != 66)
+dades$origenmigracio <- droplevels(dades$origenmigracio)
+```
+
+
+
+```{r}
+completas<- complete.cases(dades)
+dades<- dades[completas, ]
+dades<- dades[, c(1:7, 16:20)]
+write.csv(dades, "dades.csv", row.names = FALSE)
+```
